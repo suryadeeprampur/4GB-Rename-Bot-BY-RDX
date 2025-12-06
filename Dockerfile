@@ -1,28 +1,25 @@
-# Use a stable, small base
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-# Avoid buffering so logs appear in the platform console immediately
-ENV PYTHONUNBUFFERED=1
-
+# Set working directory
 WORKDIR /app
 
-# system deps (ffmpeg needed for some media ops)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      git \
-      ffmpeg \
-      build-essential \
-      && rm -rf /var/lib/apt/lists/*
+# Install system packages
+RUN apt update && apt install -y \
+    git \
+    ffmpeg \
+    python3-pip \
+    && apt clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# copy requirements and install before copying the whole repo (better caching)
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# Install requirements first (faster Docker caching)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# copy project
-COPY . /app
+# Copy project files
+COPY . .
 
-# expose health port so it's visible/clear in container metadata
+# Expose port for web server (important for Koyeb/Render/Railway)
 EXPOSE 8080
 
-# default command (adjust if your main file is named differently)
+# Command to start bot
 CMD ["python3", "bot.py"]
