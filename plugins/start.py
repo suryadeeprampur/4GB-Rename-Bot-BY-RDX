@@ -1,4 +1,3 @@
-# start.py
 from datetime import date as date_
 import datetime
 import os
@@ -138,11 +137,31 @@ async def send_doc(client, message):
                 logger.exception("Failed to send log message for new user %s", user_id)
             return
 
+    # Resolve botid safely (fix for NameError)
+    try:
+        botid = None
+        # attempt: check for bot id passed in message.text or caption (deep-link args)
+        arg_src = (getattr(message, 'text', None) or getattr(message, 'caption', None) or '').strip()
+        parts = arg_src.split()
+        if len(parts) > 1 and parts[1].isdigit():
+            botid = int(parts[1])
+        else:
+            env_botid = os.getenv('BOT_ID') or os.getenv('BOTID')
+            if env_botid and env_botid.isdigit():
+                botid = int(env_botid)
+            else:
+                # fallback to bot's own id
+                me = await client.get_me()
+                botid = int(getattr(me, 'id', message.chat.id))
+    except Exception:
+        logger.exception('Failed to resolve botid, defaulting to chat id')
+        botid = message.chat.id
+
     # update or fetch bot stats
     try:
         botdata(int(botid))
     except Exception:
-        logger.exception("botdata() call failed")
+        logger.exception("botdata() call failed for botid %s", botid)
 
     bot_data = find_one(int(botid)) or {}
     prrename = bot_data.get('total_rename', 0)
@@ -257,7 +276,7 @@ async def send_doc(client, message):
                     total_rename(int(botid), prrename)
                     total_size(int(botid), prsize, file.file_size)
                 except Exception:
-                    logger.exception("Failed to update totals for bot")
+                    logger.exception("Failed to update totals for bot %s", botid)
             else:
                 # expired: downgrade
                 try:
@@ -265,7 +284,8 @@ async def send_doc(client, message):
                     usertype(user_id, "Free")
                 except Exception:
                     logger.exception("Failed to downgrade expired user %s", user_id)
-                await message.reply_text(f'Your Plan Expired On {buy_date}', quote=True)
+                expired_str = str(buy_date) if buy_date else "Unknown"
+                await message.reply_text(f'Your Plan Expired On {expired_str}', quote=True)
                 return
         else:
             # no session support -> cannot handle >2GB
@@ -295,7 +315,7 @@ async def send_doc(client, message):
             total_rename(int(botid), prrename)
             total_size(int(botid), prsize, file.file_size)
         except Exception:
-            logger.exception("Failed to update total_rename/total_size")
+            logger.exception("Failed to update total_rename/total_size for bot %s", botid)
 
         await message.reply_text(
             f"__What Do You Want Me To Do With This File ?__\n\n"
